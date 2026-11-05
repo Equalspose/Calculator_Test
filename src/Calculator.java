@@ -1,177 +1,120 @@
 public class Calculator {
 
-    private final String input;
-    private int pos;
-
-    private Calculator(String input) {
-        this.input = input;
-        this.pos = 0;
-    }
+    private static String s;   // исходное выражение
+    private static int pos;    // текущая позиция в строке
 
     public static int evaluate(String expression) {
-        if (expression == null) {
-            throw new IllegalArgumentException("Выражение не может быть null");
-        }
-        Calculator parser = new Calculator(expression);
-        parser.skipSpaces();
-        if (parser.isEnd()) {
+        if (expression == null || expression.isBlank()) {
             throw new IllegalArgumentException("Пустое выражение");
         }
-        int result = parser.parseExpression();
-        parser.skipSpaces();
-        if (!parser.isEnd()) {
-            char c = parser.input.charAt(parser.pos);
-            if (c == ')') {
-                throw new IllegalArgumentException(
-                        "Лишняя закрывающая скобка на позиции " + parser.pos);
-            }
+        s = expression;
+        pos = 0;
+
+        int result = parseExpression();
+
+        skipSpaces();
+        if (pos < s.length()) {
             throw new IllegalArgumentException(
-                    "Неожиданный символ '" + c + "' на позиции " + parser.pos);
+                "Лишний символ '" + s.charAt(pos) + "' на позиции " + pos);
         }
         return result;
     }
 
-    private int parseExpression() {
+    // Сложение и вычитание
+    private static int parseExpression() {
         int result = parseTerm();
         while (true) {
             skipSpaces();
-            if (match('+')) {
-                result = add(result, parseTerm());
-            } else if (match('-')) {
-                result = subtract(result, parseTerm());
+            if (pos >= s.length())
+                break;
+            char op = s.charAt(pos);
+            if (op == '+') {
+                pos++;
+                result += parseTerm();
+            } else if (op == '-') {
+                pos++;
+                result -= parseTerm();
             } else {
-                return result;
+                break;
             }
         }
+        return result;
     }
 
-    private int parseTerm() {
+    // Умножение и деление
+    private static int parseTerm() {
         int result = parseFactor();
         while (true) {
             skipSpaces();
-            if (match('*')) {
-                result = multiply(result, parseFactor());
-            } else if (match('/')) {
-                int divisorPos = pos;
+            if (pos >= s.length()) break;
+            char op = s.charAt(pos);
+            if (op == '*') {
+                pos++;
+                result *= parseFactor();
+            } else if (op == '/') {
+                pos++;
                 int divisor = parseFactor();
                 if (divisor == 0) {
-                    throw new IllegalArgumentException(
-                            "Деление на ноль (позиция " + divisorPos + ")");
+                    throw new IllegalArgumentException("Деление на ноль");
                 }
-                if (result == Integer.MIN_VALUE && divisor == -1) {
-                    throw new IllegalArgumentException("Переполнение int при делении");
-                }
-                result = result / divisor;
+                result /= divisor;
             } else {
-                return result;
+                break;
             }
         }
+        return result;
     }
-    
-    private int parseFactor() {
+
+    private static int parseFactor() {
         skipSpaces();
-        if (isEnd()) {
+        if (pos >= s.length()) {
             throw new IllegalArgumentException(
-                    "Неожиданный конец выражения: ожидалось число или '('");
+                    "Ожидалось число на позиции " + pos + ", но выражение закончилось");
+        }
+        char c = s.charAt(pos);
+
+        if (c == '-') {
+            pos++;
+            return -parseFactor();
         }
 
-        char c = input.charAt(pos);
-
-        if (c == '-') {               // унарный минус: -5, -(2+3)
-            pos++;
-            return negate(parseFactor());
-        }
-        if (c == '+') {               // унарный плюс: +5
-            pos++;
-            return parseFactor();
-        }
         if (c == '(') {
             int openPos = pos;
             pos++;
             int value = parseExpression();
             skipSpaces();
-            if (!match(')')) {
+            if (pos >= s.length() || s.charAt(pos) != ')') {
                 throw new IllegalArgumentException(
                         "Не закрыта скобка, открытая на позиции " + openPos);
             }
+            pos++;
             return value;
         }
+
         if (Character.isDigit(c)) {
-            return parseNumber();
+            int start = pos;
+            while (pos < s.length() && Character.isDigit(s.charAt(pos))) {
+                pos++;
+            }
+            try {
+                return Integer.parseInt(s.substring(start, pos));
+            } catch (NumberFormatException e) {
+                throw new IllegalArgumentException(
+                        "Слишком большое число на позиции " + start);
+            }
         }
-        if (c == ')') {
-            throw new IllegalArgumentException(
-                    "Ожидалось число перед ')' на позиции " + pos);
-        }
+
         throw new IllegalArgumentException(
                 "Недопустимый символ '" + c + "' на позиции " + pos);
     }
 
-    private int parseNumber() {
-        int start = pos;
-        while (!isEnd() && Character.isDigit(input.charAt(pos))) {
-            pos++;
-        }
-        String digits = input.substring(start, pos);
-        try {
-            return Integer.parseInt(digits);
-        } catch (NumberFormatException e) {
-            throw new IllegalArgumentException(
-                    "Число " + digits + " не помещается в int (позиция " + start + ")");
-        }
-    }
-
-    private void skipSpaces() {
-        while (!isEnd() && Character.isWhitespace(input.charAt(pos))) {
+    private static void skipSpaces() {
+        while (pos < s.length() && s.charAt(pos) == ' ') {
             pos++;
         }
     }
 
-    private boolean match(char expected) {
-        if (!isEnd() && input.charAt(pos) == expected) {
-            pos++;
-            return true;
-        }
-        return false;
-    }
-
-    private boolean isEnd() {
-        return pos >= input.length();
-    }
-
-    private static int add(int a, int b) {
-        try {
-            return Math.addExact(a, b);
-        } catch (ArithmeticException e) {
-            throw new IllegalArgumentException("Переполнение int при сложении");
-        }
-    }
-
-    private static int subtract(int a, int b) {
-        try {
-            return Math.subtractExact(a, b);
-        } catch (ArithmeticException e) {
-            throw new IllegalArgumentException("Переполнение int при вычитании");
-        }
-    }
-
-    private static int multiply(int a, int b) {
-        try {
-            return Math.multiplyExact(a, b);
-        } catch (ArithmeticException e) {
-            throw new IllegalArgumentException("Переполнение int при умножении");
-        }
-    }
-
-    private static int negate(int a) {
-        try {
-            return Math.negateExact(a);
-        } catch (ArithmeticException e) {
-            throw new IllegalArgumentException("Переполнение int при смене знака");
-        }
-    }
-
-    // ---------- демонстрация ----------
+    // ТЕСТ
 
     public static void main(String[] args) {
         String[] tests = {
